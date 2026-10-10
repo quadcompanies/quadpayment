@@ -1,0 +1,48 @@
+{
+    "name": "quadcompanies/quadpayment",
+    "description": "Tokenized Payload (v2) card payments for Laravel with built-in card-testing defenses.",
+    "type": "library",
+    "license": "proprietary",
+    "keywords": ["laravel", "payload", "payments", "pci", "card-testing"],
+    "require": {
+        "php": "^8.3",
+        "illuminate/contracts": "^13.0",
+        "illuminate/database": "^13.0",
+        "illuminate/http": "^13.0",
+        "illuminate/support": "^13.0",
+        "illuminate/view": "^13.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^11.0",
+        "phpunit/phpunit": "^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "QuadCompanies\\QuadPayment\\": "src/",
+            "QuadCompanies\\QuadPayment\\Database\\Factories\\": "database/factories/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "QuadCompanies\\QuadPayment\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "QuadCompanies\\QuadPayment\\QuadPaymentServiceProvider"
+            ],
+            "aliases": {
+                "QuadPayment": "QuadCompanies\\QuadPayment\\Facades\\QuadPayment"
+            }
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

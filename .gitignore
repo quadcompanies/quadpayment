@@ -1,0 +1,8 @@
+/vendor/
+/composer.lock
+.phpunit.cache/
+.phpunit.result.cache
+.DS_Store
+
+# Original app code and API reference used to build the package — not distributed.
+/sources/
