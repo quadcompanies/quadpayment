@@ -138,6 +138,18 @@ Events you can listen for: `PaymentSucceeded`, `PaymentDeclined`, `ActorBlocked`
 
 Bot check: the default is Cloudflare Turnstile. To use something else, bind your own `QuadCompanies\QuadPayment\Contracts\BotVerifier`. `QUADPAYMENT_BOT_VERIFIER=null` disables the check, for local development only.
 
+## Development options
+
+```dotenv
+QUADPAYMENT_ALLOW_IPS=203.0.113.9,203.0.113.10
+QUADPAYMENT_WEBHOOK_VERIFY=false
+QUADPAYMENT_DEBUG=true
+```
+
+- **Testing IPs.** Addresses in `QUADPAYMENT_ALLOW_IPS` (comma-separated) are never rate limited or blocked, and their attempts — while still recorded in `qp_attempts` — don't lock checkouts, create blocks, feed the circuit breaker or count against any other visitor. Use it for your office IP, CI, or a load tester, so repeated card tests don't trip the defenses. A breaker tripped by *other* traffic still stops these IPs too.
+- **Unsigned webhooks.** `QUADPAYMENT_WEBHOOK_VERIFY=false` accepts webhook posts without a valid `X-Payload-Signature`, so you can replay sandbox events against localhost with curl. The toggle is ignored in production: signatures are always enforced there.
+- **Debug logging.** `QUADPAYMENT_DEBUG=true` logs every Payload API call (method, path, payload, status, duration, response), every guard decision, and every checkout milestone (token minted/reused, authorized, captured, webhook received/processed) to the application log at `debug` level, prefixed `quadpayment.debug:`. The context includes full API responses — customer names and emails — so keep it out of production log pipelines.
+
 ## Operations
 
 ```bash

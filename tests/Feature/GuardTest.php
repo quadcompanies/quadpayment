@@ -4,6 +4,7 @@ namespace QuadCompanies\QuadPayment\Tests\Feature;
 
 use QuadCompanies\QuadPayment\Exceptions\PaymentBlockedException;
 use QuadCompanies\QuadPayment\Facades\QuadPayment;
+use QuadCompanies\QuadPayment\Models\Attempt;
 use QuadCompanies\QuadPayment\Models\Block;
 use QuadCompanies\QuadPayment\Models\Checkout;
 use QuadCompanies\QuadPayment\Models\SecurityEvent;
@@ -190,6 +191,37 @@ class GuardTest extends TestCase
         }
 
         $this->assertTrue(Block::query()->where('type', 'card')->exists());
+    }
+
+    public function test_testing_ip_is_never_blocked_and_never_trips_anything(): void
+    {
+        config(['quadpayment.guard.allow_ips' => ['198.51.100.99']]);
+        config(['quadpayment.guard.tokens.per_ip_per_hour' => 1]);
+        app(\QuadCompanies\QuadPayment\Security\Thresholds::class)->flush();
+
+        // Far past every limit: suspicious declines, many distinct cards,
+        // all on one checkout — a developer hammering the sandbox.
+        [$checkout, $token] = $this->freshCheckout('198.51.100.99');
+
+        foreach (range(1, 15) as $i) {
+            $this->record($this->payload->decline($token, 'invalid_card_number', str_pad((string) $i, 4, '0', STR_PAD_LEFT), '198.51.100.99'), $checkout);
+        }
+
+        $this->assertSame(0, Block::query()->count());
+        $this->assertFalse(QuadPayment::breaker()->isTripped());
+        $this->assertTrue($checkout->fresh()->isOpen(), 'testing declines must not lock the checkout');
+        $this->assertSame(15, Attempt::query()->count(), 'testing attempts are still recorded');
+
+        // Fresh tokens keep coming even past the per-IP token limit.
+        $this->freshCheckout('198.51.100.99');
+
+        // And the testing noise doesn't count against real visitors: one
+        // ordinary decline must not inherit a breaker-sized backlog.
+        [$other, $otherToken] = $this->freshCheckout('203.0.113.77');
+        $this->record($this->payload->decline($otherToken, 'invalid_card_code', '7777', '203.0.113.77'), $other);
+
+        $this->assertFalse(QuadPayment::breaker()->isTripped());
+        $this->assertSame(0, Block::query()->count());
     }
 
     public function test_runtime_threshold_override(): void

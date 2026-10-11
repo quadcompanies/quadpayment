@@ -5,6 +5,18 @@ All notable changes to this package are documented here. The format follows
 [Semantic Versioning](https://semver.org/). While the version is 0.x, minor
 releases may contain breaking changes.
 
+## [0.2.0] - 2026-10-11
+
+### Added
+- Development options: testing IPs in `QUADPAYMENT_ALLOW_IPS` are now fully
+  exempt from the guard — besides bypassing per-actor limits (as before),
+  their attempts no longer lock checkouts, create card blocks, feed the
+  circuit breaker or count against other visitors, so repeated card tests
+  can run without tripping anything. `QUADPAYMENT_WEBHOOK_VERIFY=false`
+  accepts unsigned webhooks for local replay; it is ignored in production.
+  `QUADPAYMENT_DEBUG=true` logs every Payload API call, guard decision and
+  checkout milestone at debug level, prefixed `quadpayment.debug:`.
+
 ## [0.1.1] - 2026-10-10
 
 ### Fixed
@@ -37,5 +49,6 @@ Payload sandbox" in the README.
 - Artisan commands: `quadpayment:status`, `:breaker`, `:block`, `:set`,
   `:webhooks`, `:prune`.
 
+[0.2.0]: https://github.com/quadcompanies/quadpayment/releases/tag/v0.2.0
 [0.1.1]: https://github.com/quadcompanies/quadpayment/releases/tag/v0.1.1
 [0.1.0]: https://github.com/quadcompanies/quadpayment/releases/tag/v0.1.0

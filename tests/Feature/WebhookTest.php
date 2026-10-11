@@ -63,4 +63,27 @@ class WebhookTest extends TestCase
     {
         $this->deliver($this->event('txn_missing'))->assertStatus(503);
     }
+
+    public function test_signature_verification_can_be_disabled_outside_production(): void
+    {
+        config(['quadpayment.webhooks.verify' => false]);
+
+        $request = $this->visitor();
+        $checkout = QuadPayment::checkout()->amount(5)->create($request);
+        $txn = $this->payload->decline(QuadPayment::token($checkout, $request));
+
+        // Unsigned delivery is accepted and fully processed.
+        $this->postJson('/quadpayment/webhook', $this->event($txn))->assertOk();
+        $this->assertSame(1, Attempt::query()->count());
+        $this->assertSame(1, $checkout->fresh()->decline_count);
+    }
+
+    public function test_disabling_signature_verification_is_ignored_in_production(): void
+    {
+        config(['quadpayment.webhooks.verify' => false]);
+        $this->app['env'] = 'production';
+
+        $this->postJson('/quadpayment/webhook', $this->event('txn_x'))->assertStatus(401);
+        $this->assertSame(0, Attempt::query()->count());
+    }
 }

@@ -6,6 +6,7 @@ use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Arr;
+use QuadCompanies\QuadPayment\Support\Debug;
 
 /**
  * Thin wrapper over the Payload v2 REST API. Only ever handles identifiers
@@ -177,11 +178,23 @@ class PayloadClient
             throw new PayloadException('Payload API key is not configured (PAYLOAD_API_SECRET).');
         }
 
+        $started = microtime(true);
+
         try {
             $response = $this->request($method)->{$method}($path, $data);
         } catch (\Throwable $e) {
+            Debug::log('payload.unreachable', ['method' => $method, 'path' => $path, 'error' => $e->getMessage()]);
+
             throw new PayloadException('Payload API unreachable: ' . $e->getMessage(), 0, null, $e);
         }
+
+        Debug::log('payload.' . $method, [
+            'path' => $path,
+            'data' => $data,
+            'status' => $response->status(),
+            'ms' => (int) round((microtime(true) - $started) * 1000),
+            'response' => $response->json(),
+        ]);
 
         return $this->decode($response);
     }

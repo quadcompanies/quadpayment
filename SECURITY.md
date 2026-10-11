@@ -71,7 +71,7 @@ The distinct-card rules are the strongest single signal, and they count *success
 - **IP.** IPv4 is grouped by /24 and IPv6 by /64.
 - **Session.** The session id survives Laravel's session-id rotation.
 
-Counts come from database tables, not the cache, so a cache flush doesn't reset them. Trusted IPs, such as your office or a load tester, can be exempted with `QUADPAYMENT_ALLOW_IPS`.
+Counts come from database tables, not the cache, so a cache flush doesn't reset them. Trusted IPs, such as your office or a load tester, can be exempted with `QUADPAYMENT_ALLOW_IPS`: they are never blocked or rate limited, and their attempts are recorded but never counted — they cannot lock checkouts, create blocks, trip the breaker, or inflate the stats of a card or subnet they share with real visitors. A breaker tripped by other traffic still stops them.
 
 ### 4. Circuit breaker: stop all card processing
 

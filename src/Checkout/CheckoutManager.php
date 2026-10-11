@@ -18,6 +18,7 @@ use QuadCompanies\QuadPayment\Security\Decision;
 use QuadCompanies\QuadPayment\Security\Fingerprinter;
 use QuadCompanies\QuadPayment\Security\Guard;
 use QuadCompanies\QuadPayment\Security\SecurityLog;
+use QuadCompanies\QuadPayment\Support\Debug;
 
 class CheckoutManager
 {
@@ -61,6 +62,8 @@ class CheckoutManager
             }
 
             if ($checkout->hasUsableToken()) {
+                Debug::log('checkout.token_reused', ['checkout_id' => $checkout->id, 'intent_id' => $checkout->intent_id]);
+
                 return $checkout->client_token;
             }
 
@@ -95,6 +98,12 @@ class CheckoutManager
             ])->save();
 
             $this->guard->recordTokenIssued($actor, $checkout, $intent['id'] ?? null);
+
+            Debug::log('checkout.token_minted', [
+                'checkout_id' => $checkout->id,
+                'intent_id' => $intent['id'] ?? null,
+                'tokens_issued' => $checkout->tokens_issued,
+            ]);
 
             return $intent['token'];
         });
@@ -211,6 +220,12 @@ class CheckoutManager
 
         $this->rejectIfBlocked($checkout, $transaction);
 
+        Debug::log('checkout.authorized', [
+            'checkout_id' => $checkout->id,
+            'transaction_id' => $transaction->id(),
+            'amount_cents' => $transaction->amountInCents(),
+        ]);
+
         $checkout->forceFill([
             'status' => Checkout::AUTHORIZED,
             'transaction_id' => $transaction->id(),
@@ -313,6 +328,8 @@ class CheckoutManager
                     throw new PaymentVerificationException('capture_failed', 'We could not complete your payment and you have not been charged. Please try again.', $transaction->id());
                 }
             }
+
+            Debug::log('checkout.captured', ['checkout_id' => $checkout->id, 'transaction_id' => $transaction->id()]);
 
             $checkout->forceFill(['status' => Checkout::PAID, 'completed_at' => now()])->save();
 

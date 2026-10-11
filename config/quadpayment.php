@@ -71,6 +71,12 @@ return [
 
     'bot_verifier' => env('QUADPAYMENT_BOT_VERIFIER', 'turnstile'),
 
+    // Development only: log every Payload API call, guard decision and
+    // checkout milestone at debug level ("quadpayment.debug: ..."). The
+    // context includes full API responses (customer names, emails) — don't
+    // feed production logs with it.
+    'debug' => (bool) env('QUADPAYMENT_DEBUG', false),
+
     'turnstile' => [
         'secret' => env('TURNSTILE_SECRET_KEY'),
         'site_key' => env('TURNSTILE_SITE_KEY'),
@@ -90,6 +96,13 @@ return [
 
     'webhooks' => [
         'secret' => env('PAYLOAD_WEBHOOK_SECRET'),
+
+        // Development escape hatch: set QUADPAYMENT_WEBHOOK_VERIFY=false to
+        // accept webhooks without a valid signature (e.g. replaying sandbox
+        // events against localhost with curl). Ignored in production:
+        // signatures are always enforced there.
+        'verify' => (bool) env('QUADPAYMENT_WEBHOOK_VERIFY', true),
+
         'path' => 'quadpayment/webhook',
         'triggers' => ['payment', 'processed', 'authorized', 'decline', 'reject', 'void'],
         'retries' => 3,
@@ -119,8 +132,11 @@ return [
         'ipv4_subnet' => 24,
         'ipv6_subnet' => 64,
 
-        // Trusted IPs bypass the per-actor limits (office, load tester). The
-        // circuit breaker still applies.
+        // Testing IPs (office, CI, load tester): never rate limited, never
+        // blocked, and their attempts — still recorded in qp_attempts — don't
+        // lock checkouts, create blocks or feed the circuit breaker, so a
+        // developer can run card tests all day without tripping anything.
+        // A breaker tripped by *other* traffic still stops these IPs too.
         'allow_ips' => array_filter(explode(',', (string) env('QUADPAYMENT_ALLOW_IPS', ''))),
 
         // Client tokens are the ammunition for card attempts.

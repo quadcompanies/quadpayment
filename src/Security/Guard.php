@@ -12,6 +12,7 @@ use QuadCompanies\QuadPayment\Models\SecurityEvent;
 use QuadCompanies\QuadPayment\Models\Token;
 use QuadCompanies\QuadPayment\Payload\PayloadClient;
 use QuadCompanies\QuadPayment\Payload\Transaction;
+use QuadCompanies\QuadPayment\Support\Debug;
 
 /**
  * Card-testing defenses.
@@ -62,6 +63,11 @@ class Guard
     /** May this actor attempt a card on this checkout right now? */
     public function check(Actor $actor, ?Checkout $checkout = null, ?string $cardHash = null): Decision
     {
+        return $this->decided('guard.check', $actor, $checkout, $this->evaluateCheck($actor, $checkout, $cardHash));
+    }
+
+    private function evaluateCheck(Actor $actor, ?Checkout $checkout, ?string $cardHash): Decision
+    {
         if (! $this->enabled()) {
             return Decision::allow();
         }
@@ -88,6 +94,11 @@ class Guard
     /** May we mint a new client token for this actor? */
     public function checkTokenIssuance(Actor $actor, Checkout $checkout): Decision
     {
+        return $this->decided('guard.token_issuance', $actor, $checkout, $this->evaluateTokenIssuance($actor, $checkout));
+    }
+
+    private function evaluateTokenIssuance(Actor $actor, Checkout $checkout): Decision
+    {
         $decision = $this->check($actor, $checkout);
 
         if ($decision->denied() || ! $this->enabled()) {
@@ -96,7 +107,9 @@ class Guard
 
         // A flood of token requests across the whole site is an attack in
         // progress even when each source stays under its own limit.
-        $global = Token::query()->where('created_at', '>=', now()->subMinutes(10))->count();
+        $global = $this->withoutAllowListed(Token::query())
+            ->where('created_at', '>=', now()->subMinutes(10))
+            ->count();
 
         if ($global >= (int) $this->thresholds->get('tokens.global_per_10_minutes', 120)) {
             $this->tripBreaker(sprintf('Site-wide token surge: %d client tokens in 10 minutes', $global));
@@ -188,6 +201,12 @@ class Guard
                 $this->afterDecline($existing, $checkout);
             }
 
+            Debug::log('guard.attempt_updated', [
+                'transaction_id' => $transaction->id(),
+                'status' => $existing->status,
+                'source' => $source,
+            ]);
+
             return $existing;
         }
 
@@ -215,13 +234,23 @@ class Guard
             return Attempt::query()->where('transaction_id', $transaction->id())->first();
         }
 
+        Debug::log('guard.attempt_recorded', [
+            'transaction_id' => $attempt->transaction_id,
+            'status' => $attempt->status,
+            'status_code' => $attempt->status_code,
+            'weight' => $attempt->weight,
+            'source' => $source,
+            'ip' => $attempt->ip,
+            'checkout_id' => $checkout?->id,
+        ]);
+
         if (! $this->enabled()) {
             return $attempt;
         }
 
         if ($attempt->isDecline()) {
             $this->afterDecline($attempt, $checkout);
-        } else {
+        } elseif (! $this->isAllowListed($attempt->ip)) {
             // Many *successful* cards from one source — or one card succeeding
             // from many places — is card testing too.
             $this->assessActor($attempt);
@@ -236,17 +265,22 @@ class Guard
     {
         event(new PaymentDeclined($attempt));
 
+        // Allow-listed IPs are testing: their declines are recorded but never
+        // lock the checkout, create blocks or feed the breaker.
+        $exempt = $this->isAllowListed($attempt->ip);
+
         if ($checkout) {
             $checkout->increment('decline_count');
             $checkout->increment('decline_score', $attempt->weight);
 
-            if ($checkout->decline_count >= (int) $this->thresholds->get('checkout.max_declines', 3)
+            if (! $exempt
+                && $checkout->decline_count >= (int) $this->thresholds->get('checkout.max_declines', 3)
                 && $checkout->isOpen()) {
                 $this->lockCheckout($checkout, 'Too many declines on one checkout');
             }
         }
 
-        if (! $this->enabled()) {
+        if (! $this->enabled() || $exempt) {
             return;
         }
 
@@ -279,7 +313,9 @@ class Guard
                 continue;
             }
 
-            $query = Attempt::query()->where($column, $value)->where('occurred_at', '>=', now()->subMinutes($minutes));
+            $query = $this->withoutAllowListed(Attempt::query())
+                ->where($column, $value)
+                ->where('occurred_at', '>=', now()->subMinutes($minutes));
             $limit = (float) $this->thresholds->get($key);
 
             if ($metric === 'declines') {
@@ -307,7 +343,7 @@ class Guard
 
         $since = now()->subDay();
 
-        $score = (float) Attempt::query()
+        $score = (float) $this->withoutAllowListed(Attempt::query())
             ->where('card_hash', $attempt->card_hash)
             ->whereIn('status', ['declined', 'rejected'])
             ->where('occurred_at', '>=', $since)
@@ -317,7 +353,7 @@ class Guard
             $this->blocks->escalate(Block::CARD, $attempt->card_hash, sprintf('Card declined repeatedly (score %.2f in 24h)', $score));
         }
 
-        $ips = Attempt::query()
+        $ips = $this->withoutAllowListed(Attempt::query())
             ->where('card_hash', $attempt->card_hash)
             ->where('occurred_at', '>=', $since)
             ->whereNotNull('ip')
@@ -337,7 +373,7 @@ class Guard
         }
 
         $minutes = (int) $this->thresholds->get('breaker.window_minutes', 15);
-        $window = Attempt::query()->where('occurred_at', '>=', now()->subMinutes($minutes));
+        $window = $this->withoutAllowListed(Attempt::query())->where('occurred_at', '>=', now()->subMinutes($minutes));
 
         $total = (clone $window)->count();
         $declined = (clone $window)->whereIn('status', ['declined', 'rejected']);
@@ -409,9 +445,37 @@ class Guard
         return (int) $query->whereNotNull('card_hash')->distinct()->count('card_hash');
     }
 
+    private function decided(string $gate, Actor $actor, ?Checkout $checkout, Decision $decision): Decision
+    {
+        Debug::log($gate, [
+            'allowed' => $decision->allowed,
+            'reason' => $decision->reason,
+            'ip' => $actor->ip,
+            'checkout_id' => $checkout?->id,
+            'allow_listed' => $this->isAllowListed($actor->ip),
+        ]);
+
+        return $decision;
+    }
+
     public function isAllowListed(?string $ip): bool
     {
         return $ip && in_array($ip, (array) ($this->config['allow_ips'] ?? []), true);
+    }
+
+    /**
+     * Attempts and tokens from allow-listed (testing) IPs are recorded but
+     * never counted against anyone — not the breaker, not the card, not the
+     * subnet they happen to share with real visitors.
+     */
+    private function withoutAllowListed(Builder $query): Builder
+    {
+        $ips = (array) ($this->config['allow_ips'] ?? []);
+
+        // NULL NOT IN (...) is never true in SQL; keep unattributed rows in.
+        return $ips === []
+            ? $query
+            : $query->where(fn ($q) => $q->whereNull('ip')->orWhereNotIn('ip', $ips));
     }
 
     public function cardHashFor(Transaction $transaction): ?string

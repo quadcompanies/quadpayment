@@ -15,6 +15,7 @@ use QuadCompanies\QuadPayment\Security\Actor;
 use QuadCompanies\QuadPayment\Security\Fingerprinter;
 use QuadCompanies\QuadPayment\Security\Guard;
 use QuadCompanies\QuadPayment\Security\SecurityLog;
+use QuadCompanies\QuadPayment\Support\Debug;
 
 /**
  * Payload webhook receiver. This is how attempts made *directly* against
@@ -44,6 +45,13 @@ class WebhookController extends Controller
         $eventId = $request->input('event_id');
         $objectId = $request->input('triggered_on.id');
         $object = $request->input('triggered_on.object');
+
+        Debug::log('webhook.received', [
+            'event_id' => $eventId,
+            'trigger' => $request->input('trigger'),
+            'object' => $object,
+            'object_id' => $objectId,
+        ]);
 
         if (is_string($eventId) && $eventId !== '') {
             try {
@@ -102,12 +110,21 @@ class WebhookController extends Controller
 
         isset($event) && $event->update(['status' => 'processed']);
 
+        Debug::log('webhook.processed', ['event_id' => $eventId, 'transaction_id' => $transaction->id()]);
+
         return response()->json(['ok' => true]);
     }
 
     /** HMAC-SHA256 of the raw body with the webhook's sender_secret. */
     private function signatureValid(Request $request): bool
     {
+        // The development toggle is never honored in production — a webhook
+        // only points at a transaction that is re-fetched before being
+        // trusted, but unsigned posts could still manufacture load and noise.
+        if (! config('quadpayment.webhooks.verify', true) && ! app()->environment('production')) {
+            return true;
+        }
+
         $secret = (string) config('quadpayment.webhooks.secret');
         $signature = (string) $request->header('X-Payload-Signature');
 
