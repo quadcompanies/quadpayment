@@ -5,6 +5,17 @@ All notable changes to this package are documented here. The format follows
 [Semantic Versioning](https://semver.org/). While the version is 0.x, minor
 releases may contain breaking changes.
 
+## [0.1.1] - 2026-10-10
+
+### Fixed
+- Every GET and DELETE request to the Payload API failed with
+  `400: The browser (or proxy) sent a request that this server could not
+  understand` -- including the transaction fetch inside `verify()`, which made
+  all real payment verification impossible. The client declared
+  `Content-Type: application/json` on bodyless requests, which Payload's API
+  rejects; it now only does so on POST/PUT/PATCH. The test fake is now as
+  strict as the real API about this.
+
 ## [0.1.0] - 2026-10-10
 
 First release, for validation against the Payload sandbox and a staging app.
@@ -26,4 +37,5 @@ Payload sandbox" in the README.
 - Artisan commands: `quadpayment:status`, `:breaker`, `:block`, `:set`,
   `:webhooks`, `:prune`.
 
+[0.1.1]: https://github.com/quadcompanies/quadpayment/releases/tag/v0.1.1
 [0.1.0]: https://github.com/quadcompanies/quadpayment/releases/tag/v0.1.0

@@ -178,7 +178,7 @@ class PayloadClient
         }
 
         try {
-            $response = $this->request()->{$method}($path, $data);
+            $response = $this->request($method)->{$method}($path, $data);
         } catch (\Throwable $e) {
             throw new PayloadException('Payload API unreachable: ' . $e->getMessage(), 0, null, $e);
         }
@@ -186,15 +186,20 @@ class PayloadClient
         return $this->decode($response);
     }
 
-    private function request(): PendingRequest
+    private function request(string $method): PendingRequest
     {
-        return $this->http
+        $pending = $this->http
             ->baseUrl(rtrim($this->config['base_url'], '/'))
             ->withBasicAuth($this->config['api_key'], '')
             ->withHeaders(['X-API-Version' => $this->config['api_version'] ?? 'v2.0'])
             ->acceptJson()
-            ->asJson()
             ->timeout($this->config['timeout'] ?? 15);
+
+        // Payload's API rejects a bodyless request that carries a JSON
+        // Content-Type with "400: The browser (or proxy) sent a request
+        // that this server could not understand", so only requests that
+        // actually send a body may declare one.
+        return in_array($method, ['post', 'put', 'patch'], true) ? $pending->asJson() : $pending;
     }
 
     private function decode(Response $response): array

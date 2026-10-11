@@ -34,6 +34,18 @@ class FakePayload
         $data = $request->data();
         $this->requests[] = [$method, $path, $data, $request->header('X-API-Version')[0] ?? null];
 
+        // The real API rejects a bodyless request that declares a JSON body
+        // (GET/DELETE with Content-Type: application/json) with this 400, so
+        // the fake does too.
+        if (in_array($method, ['GET', 'DELETE'], true)
+            && str_contains($request->header('Content-Type')[0] ?? '', 'json')
+            && $request->body() === '') {
+            return Http::response([
+                'object' => 'error',
+                'error_description' => '400 Bad Request: The browser (or proxy) sent a request that this server could not understand.',
+            ], 400);
+        }
+
         return match (true) {
             $method === 'POST' && $path === '/accounts' => $this->json($this->accounts[$id = 'acct_' . ++$this->seq] = ['id' => $id] + $data),
             $method === 'POST' && $path === '/intents' => $this->json($this->intents[$id = 'int_' . ++$this->seq] = ['id' => $id, 'token' => 'client_token_' . $this->seq, 'status' => 'pending'] + $data),
