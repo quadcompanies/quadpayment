@@ -86,14 +86,14 @@ When the breaker trips:
 - No new tokens are minted.
 - Every live token is revoked.
 - The card fields render as "Online payments are temporarily unavailable."
-- Any authorization that arrives anyway is **voided, not captured**.
+- Any charge that arrives anyway is **voided, not kept**.
 - An email goes to `QUADPAYMENT_ALERT_EMAIL` and the `CircuitBreakerTripped` event fires, so you can hook up Slack or SMS.
 
 The breaker resets itself after 60 minutes. Set `breaker.cooldown_minutes` to `0` to require a manual reset with `php artisan quadpayment:breaker reset`. Its state lives in the database, so clearing the cache cannot reopen payments in the middle of an attack.
 
 ### 5. Enforcement at capture
 
-With the default `capture=manual`, the browser only authorizes the card, and the server decides whether to keep the money. The authorization is voided instead of captured if any of these is true when the transaction arrives, by webhook or at `verify()`:
+The hosted form only supports `capture=auto` (Payload.js rejects an authorize-only payment template), so the card is charged when the customer submits. The server then decides whether to *keep* the money: the charge is voided — reversed before settlement, so it never posts — if any of these is true when the transaction arrives, by webhook or at `verify()`:
 
 - the checkout is locked
 - the card is blocked
@@ -158,4 +158,4 @@ These are processor-side controls listed under Processing Settings in the API re
 | All declines counted equally | Insufficient-funds declines from real customers counted as heavily as CVV guessing | Weighted by decline code |
 | No limit on distinct cards per person | Missed the strongest signal of all | Per IP, email, session and account |
 | Breaker left issued tokens alive | Attacks continued with tokens already harvested | Live tokens revoked, and late successes voided |
-| `authorized` immediately set to `processed` | Money kept even when the attempt was suspicious | Captured only after every check passes |
+| Suspicious successes kept | Money kept even when the attempt was suspicious | Charge voided unless every check passes |

@@ -105,9 +105,10 @@ class CheckoutBuilder
      * "auto" charges the card when the customer submits — the only mode the
      * hosted card-fields form supports.
      *
-     * "manual" is rejected: see self::assertCaptureSupported(). To hold funds
-     * and capture later, use QuadPayment::verify($request, capture: false) and
-     * $result->capture().
+     * "manual" is rejected: see self::assertCaptureSupported(). To decide
+     * after the submit whether to keep the money, use
+     * QuadPayment::verify($request, capture: false), then $result->capture()
+     * or $result->void() — the card is charged on submit either way.
      */
     public function capture(string $mode): static
     {
@@ -130,8 +131,9 @@ class CheckoutBuilder
                 . 'object ({"value":"authorized"}), but Payload.js then forwards that object '
                 . 'into the browser transaction request, which rejects an object for status '
                 . '("status: Value cannot be an object"), so the payment can never complete. '
-                . 'Use capture("auto"), or QuadPayment::verify($request, capture: false) and '
-                . '$result->capture() to hold funds before capturing.'
+                . 'Use capture("auto"). To decide after the submit whether to keep the money, '
+                . 'call QuadPayment::verify($request, capture: false), then $result->capture() '
+                . 'to confirm or $result->void() to reverse the charge.'
             );
         }
 

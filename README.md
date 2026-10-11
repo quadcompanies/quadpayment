@@ -106,14 +106,16 @@ The `capture` setting defaults to `auto`: the card is charged when the customer 
 
 > **`manual` capture is not available with the hosted form** and is rejected (an `InvalidArgumentException` from `->capture('manual')` or a `QUADPAYMENT_CAPTURE=manual` default). Payload's `payment_form` intent requires `payment_template.status` to be an object (`{"value":"authorized"}`), but Payload.js then forwards that object into the browser's transaction request, which rejects an object for `status` — so a manual checkout mints a token that can never complete.
 
-To hold funds and capture later without charging on submit, keep `auto` and use `verify($request, capture: false)`:
+Because capture is `auto`, **the card is charged when the customer submits — before your controller runs**. There is no authorization hold. What `verify($request, capture: false)` gives you is a decision point *after* the charge: it confirms the transaction and leaves the checkout unconfirmed, and your code then either keeps the money or reverses the charge.
 
-- **Validation fails first.** Call `verify($request, capture: false)`, then `$payment->capture()` after your own save step succeeds, or `$payment->void()` if it failed. The re-rendered form keeps the result and shows "Visa ending 4242 approved"; the customer is never charged twice.
-- **The customer abandons the payment.** `quadpayment:prune` voids transactions that were never captured, after 60 minutes.
+- **Your own save step might fail.** Call `verify($request, capture: false)`, then `$payment->capture()` after your save succeeds (this marks the payment complete — the card was already charged), or `$payment->void()` if it failed, which reverses the charge before settlement. The re-rendered form keeps the result and shows "Visa ending 4242 approved"; the customer is never charged twice.
+- **The customer abandons the payment.** `quadpayment:prune` voids charges that were never confirmed with `capture()`, after 60 minutes.
+
+A void before the daily settlement cutoff reverses the charge so it never posts; after settlement it becomes a refund. Design your post-payment steps to finish well within the same day.
 
 `verify()` is idempotent, so a double submit returns the same result.
 
-What `verify()` checks: the transaction is a successful `payment`, its `order_number` is this checkout's reference, the payer is this checkout's Payload account, the receiver is your account and the amount matches to the cent. It also checks that the transaction isn't already used by another checkout and that the checkout belongs to the current session. If the guard has blocked the card or the actor in the meantime, or the breaker is tripped, the authorization is voided rather than captured.
+What `verify()` checks: the transaction is a successful `payment`, its `order_number` is this checkout's reference, the payer is this checkout's Payload account, the receiver is your account and the amount matches to the cent. It also checks that the transaction isn't already used by another checkout and that the checkout belongs to the current session. If the guard has blocked the card or the actor in the meantime, or the breaker is tripped, the charge is voided rather than kept.
 
 ### Saved cards
 
@@ -199,7 +201,7 @@ The test suite runs against a stateful fake of the Payload API.
 
 The package follows the v2 API reference (Intents, `/accounts`, `sender`/`receiver`, `status.value`, `X-Payload-Signature`). The reference doesn't cover Payload.js or every write semantic, so check these with test keys:
 
-1. **Manual capture — confirmed unsupported through the hosted form (2026-10-11).** Setting `payment_form.payment_template.status = {"value":"authorized"}` is accepted by `POST /intents`, but Payload.js then forwards that object into the browser's `POST /transactions`, which rejects it (`InvalidAttributes: status "Value cannot be an object"`). No shape satisfies both endpoints, so the hosted form only supports `capture: auto`; `manual` is now rejected (see the Checkout behaviour section). Authorize-then-capture is still available via `verify($request, capture: false)` + `$result->capture()`.
+1. **Manual capture — confirmed unsupported through the hosted form (2026-10-11).** Setting `payment_form.payment_template.status = {"value":"authorized"}` is accepted by `POST /intents`, but Payload.js then forwards that object into the browser's `POST /transactions`, which rejects it (`InvalidAttributes: status "Value cannot be an object"`). No shape satisfies both endpoints, so the hosted form only supports `capture: auto`; `manual` is now rejected (see the Checkout behaviour section). The charge-then-confirm pattern via `verify($request, capture: false)` + `$result->capture()` / `$result->void()` replaces it; note it charges on submit and voids, it does not hold an authorization.
 2. **Payload.js options and events.** Check that `Payload.Form({autosubmit: false})` and the `success`/`processed`/`authorized`/`declined` events behave as the component expects. The component listens for all of these names.
 3. **Revoking an intent.** Check that `DELETE /intents/{id}` stops further use of that intent's client token. If it doesn't, the defense still works: anything that succeeds on a locked checkout is voided, by the webhook or at verification.
 4. **Saved cards.** Check how `keep_active` / `status: inactive` behave on payment methods.

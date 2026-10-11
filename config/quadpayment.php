@@ -37,9 +37,12 @@ return [
     |          ({"value":"authorized"}), but Payload.js then forwards that object
     |          into the browser's transaction request, which rejects an object
     |          for status ("status: Value cannot be an object") — so a manual
-    |          checkout mints a token that can never complete. To hold funds
-    |          before capturing, call QuadPayment::verify($request, capture: false)
-    |          and $result->capture() later instead.
+    |          checkout mints a token that can never complete. To decide after
+    |          the submit whether to keep the money, call
+    |          QuadPayment::verify($request, capture: false), then
+    |          $result->capture() to confirm or $result->void() to reverse the
+    |          charge — note the card was already charged on submit; there is
+    |          no authorization hold.
     |
     | token_mode: "deferred" — the Payload client token is only minted after
     |                          the visitor passes the bot check and the guard,
