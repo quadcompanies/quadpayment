@@ -101,16 +101,43 @@ class CheckoutBuilder
         return $this;
     }
 
-    /** "auto" charges immediately; "manual" authorizes and captures in verify(). */
+    /**
+     * "auto" charges the card when the customer submits — the only mode the
+     * hosted card-fields form supports.
+     *
+     * "manual" is rejected: see self::assertCaptureSupported(). To hold funds
+     * and capture later, use QuadPayment::verify($request, capture: false) and
+     * $result->capture().
+     */
     public function capture(string $mode): static
     {
-        if (! in_array($mode, ['auto', 'manual'], true)) {
-            throw new InvalidArgumentException('Capture mode must be "auto" or "manual".');
-        }
+        self::assertCaptureSupported($mode);
 
         $this->capture = $mode;
 
         return $this;
+    }
+
+    /**
+     * @throws InvalidArgumentException when $mode is not a supported capture mode
+     */
+    private static function assertCaptureSupported(string $mode): void
+    {
+        if ($mode === 'manual') {
+            throw new InvalidArgumentException(
+                'Manual capture is not supported with the hosted card-fields form. '
+                . "Payload's payment_form intent requires payment_template.status to be an "
+                . 'object ({"value":"authorized"}), but Payload.js then forwards that object '
+                . 'into the browser transaction request, which rejects an object for status '
+                . '("status: Value cannot be an object"), so the payment can never complete. '
+                . 'Use capture("auto"), or QuadPayment::verify($request, capture: false) and '
+                . '$result->capture() to hold funds before capturing.'
+            );
+        }
+
+        if ($mode !== 'auto') {
+            throw new InvalidArgumentException('Capture mode must be "auto".');
+        }
     }
 
     public function currency(string $currency): static
@@ -139,6 +166,11 @@ class CheckoutBuilder
             throw new InvalidArgumentException('saveCard() requires for($owner).');
         }
 
+        // Catch a config-level default of "manual" (QUADPAYMENT_CAPTURE=manual)
+        // too, not only an explicit ->capture('manual') call.
+        $capture = $this->capture ?? ($this->config['capture'] ?? 'auto');
+        self::assertCaptureSupported($capture);
+
         if ($existing = $this->reusable($request)) {
             return $existing;
         }
@@ -152,7 +184,7 @@ class CheckoutBuilder
             'amount' => $this->amount,
             'currency' => $this->currency ?? ($this->config['currency'] ?? 'USD'),
             'description' => $this->description,
-            'capture' => $this->capture ?? ($this->config['capture'] ?? 'manual'),
+            'capture' => $capture,
             'save_payment_method' => $this->saveCard,
             'ip' => $actor->ip,
             'subnet' => $actor->subnet,

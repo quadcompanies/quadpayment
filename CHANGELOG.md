@@ -5,6 +5,29 @@ All notable changes to this package are documented here. The format follows
 [Semantic Versioning](https://semver.org/). While the version is 0.x, minor
 releases may contain breaking changes.
 
+## [0.2.1] - 2026-10-11
+
+### Fixed
+- Manual capture could never complete through the hosted `<x-quadpayment::card-fields>`
+  form and now fails loudly instead of minting a dead client token. The
+  `payment_form` intent requires `payment_template.status` to be an object
+  (`{"value":"authorized"}`), which Payload accepts — but Payload.js then
+  forwards that same object into the browser's `POST /transactions` call, which
+  rejects it with `InvalidAttributes: status "Value cannot be an object"`. No
+  request shape satisfies both endpoints, so a `capture: "manual"` checkout
+  produced a card form that silently did nothing on submit.
+
+### Changed
+- **The default capture mode is now `auto`** (was `manual`). Auto capture is the
+  only mode the hosted form supports.
+- `->capture('manual')` and a `QUADPAYMENT_CAPTURE=manual` default now throw
+  `InvalidArgumentException` with an explanation. To hold funds and capture
+  later, use `QuadPayment::verify($request, capture: false)` and
+  `$result->capture()` — these are unaffected.
+- The test fake (`FakePayload::payIntent`) now rejects a transaction built from a
+  template carrying a `status` object, mirroring the real API, so this class of
+  bug cannot pass the suite again.
+
 ## [0.2.0] - 2026-10-11
 
 ### Added

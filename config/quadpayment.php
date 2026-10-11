@@ -27,12 +27,19 @@ return [
     | Checkout behaviour
     |--------------------------------------------------------------------------
     |
-    | capture: "auto"   — the card is charged when the customer submits.
-    |          "manual" — the card is only authorized; QuadPayment::verify()
-    |                     captures it once your controller is happy with the
-    |                     rest of the form. Uncaptured authorizations are voided
-    |                     by `quadpayment:prune`. Recommended for forms that
-    |                     collect other data alongside the card.
+    | capture: "auto" — the card is charged when the customer submits. This is
+    |                   the only mode the hosted <x-quadpayment::card-fields>
+    |                   form supports, so it is the default.
+    |
+    |          NOTE: "manual" (authorize now, capture later) cannot be used with
+    |          the hosted payment form and is rejected. Payload's payment_form
+    |          intent requires payment_template.status to be an object
+    |          ({"value":"authorized"}), but Payload.js then forwards that object
+    |          into the browser's transaction request, which rejects an object
+    |          for status ("status: Value cannot be an object") — so a manual
+    |          checkout mints a token that can never complete. To hold funds
+    |          before capturing, call QuadPayment::verify($request, capture: false)
+    |          and $result->capture() later instead.
     |
     | token_mode: "deferred" — the Payload client token is only minted after
     |                          the visitor passes the bot check and the guard,
@@ -46,7 +53,7 @@ return [
     */
 
     'checkout' => [
-        'capture' => env('QUADPAYMENT_CAPTURE', 'manual'),
+        'capture' => env('QUADPAYMENT_CAPTURE', 'auto'),
         'token_mode' => env('QUADPAYMENT_TOKEN_MODE', 'deferred'),
         'token_ttl_minutes' => 10,
         'checkout_ttl_minutes' => 60,

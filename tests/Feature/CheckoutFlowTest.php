@@ -25,8 +25,31 @@ class CheckoutFlowTest extends TestCase
         $this->assertSame($checkout->reference, $template['order_number']);
         $this->assertSame('acct_1', $template['sender']['account_id']);
         $this->assertSame('acct_merchant', $template['receiver']['account_id']);
-        $this->assertSame('authorized', $template['status']['value'], 'manual capture authorizes only');
+        // Auto capture (the only supported hosted-form mode) never sets a status:
+        // Payload.js would forward an object status into the transaction request,
+        // which the transaction endpoint rejects.
+        $this->assertArrayNotHasKey('status', $template);
         $this->assertSame(Checkout::READY, $checkout->fresh()->status);
+    }
+
+    public function test_manual_capture_is_rejected_on_the_builder(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/Manual capture is not supported/');
+
+        QuadPayment::checkout('donation')->amount(50)->capture('manual');
+    }
+
+    public function test_manual_capture_from_config_is_rejected_on_create(): void
+    {
+        config(['quadpayment.checkout.capture' => 'manual']);
+
+        try {
+            QuadPayment::checkout('donation')->amount(50)->create($this->visitor());
+            $this->fail('Expected create() to reject a config-level manual capture mode.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('Manual capture is not supported', $e->getMessage());
+        }
     }
 
     public function test_reloading_reuses_checkout_and_token(): void

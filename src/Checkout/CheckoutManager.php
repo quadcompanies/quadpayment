@@ -125,10 +125,11 @@ class CheckoutManager
             $template['receiver'] = ['account_id' => $receiver];
         }
 
-        if ($checkout->capture === 'manual') {
-            $template['status'] = ['value' => 'authorized'];
-        }
-
+        // No `status` is ever set here. An authorize-only ("manual") template
+        // would need status as an object, which Payload.js then rejects when it
+        // creates the browser transaction — so manual capture is refused at the
+        // builder (see CheckoutBuilder::assertCaptureSupported) and the hosted
+        // form always captures on submit.
         return array_filter($template, fn ($v) => $v !== null);
     }
 

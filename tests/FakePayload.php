@@ -71,6 +71,20 @@ class FakePayload
     {
         $intent = collect($this->intents)->firstWhere('token', $token);
         $template = $intent['payment_form']['payment_template'];
+
+        // The real hosted form builds the browser transaction from the intent
+        // template. Payload rejects a transaction whose `status` is an object
+        // ("status: Value cannot be an object"), so a template that carries one
+        // (an authorize-only / "manual" template) can never complete. Mirror
+        // that here so a regression can't pass the suite.
+        if (array_key_exists('status', $template)) {
+            throw new \RuntimeException(
+                'Payload would reject this transaction: payment_template carries a '
+                . '"status" object, which the transaction endpoint refuses '
+                . '("status: Value cannot be an object").'
+            );
+        }
+
         $id = 'txn_' . ++$this->seq;
         $pm = 'pm_' . $this->seq;
 
