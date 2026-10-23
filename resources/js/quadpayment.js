@@ -48,7 +48,7 @@
     var state = {
       token: root.getAttribute('data-token'),
       payloadForm: null,
-      phase: 'idle', // idle | paying | processing | done | dead
+      phase: 'idle', // idle | processing | done | dead
       challenge: null,
       busyLabels: new Map()
     };
@@ -284,36 +284,42 @@
 
     form.addEventListener('submit', function (e) {
       if (state.phase === 'done') {
-        return;
+        return; // onSuccess did a native submit; let it reach the server
       }
-
-      // The re-dispatched event below: let it through to Payload.js.
-      if (state.phase === 'paying') {
-        return;
-      }
-
-      e.preventDefault();
-      e.stopImmediatePropagation();
 
       if (state.phase !== 'idle') {
+        // A card is already being processed — block duplicate submits, but
+        // never stop propagation: the in-flight submit still belongs to Payload.
+        e.preventDefault();
         return;
       }
 
       if (!state.payloadForm) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
         showError(ui.gate ? 'Please enter your card details first.' : 'The payment form is still loading. Please wait a moment.');
         if (ui.gate && !root.querySelector('[data-qp-challenge]')) requestToken();
         return;
       }
 
       if (typeof form.reportValidity === 'function' && !form.reportValidity()) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
         return;
       }
 
+      // Hand Payload.js the user's real, trusted submit event. This handler
+      // runs first (capture phase, registered before Payload's handler when
+      // the form was mounted); once our checks pass we let the SAME event
+      // continue to Payload, which tokenizes the card and fires
+      // success/declined. We must NOT re-dispatch a synthetic Event('submit')
+      // here: Payload.js ignores an untrusted, hand-built event in Firefox, so
+      // the card was never processed and the form hung. We also must NOT
+      // preventDefault — Payload stops the native navigation itself
+      // (preventDefaultOnSubmit: true) and needs the event to reach it.
       hideError();
       setBusy(true, 'Processing…');
-      state.phase = 'paying';
-      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-      if (state.phase === 'paying') state.phase = 'processing';
+      state.phase = 'processing';
     }, true);
 
     // ---- wiring ----------------------------------------------------------

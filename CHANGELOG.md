@@ -5,6 +5,23 @@ All notable changes to this package are documented here. The format follows
 [Semantic Versioning](https://semver.org/). While the version is 0.x, minor
 releases may contain breaking changes.
 
+## [0.3.1] - 2026-10-23
+
+### Fixed
+- Card submission did nothing in Firefox: the form flipped its button to
+  "Processing…" and hung, with no network request to Payload and no
+  success/declined event. The component triggered Payload.js by calling
+  `e.stopImmediatePropagation()` on the user's submit and then re-dispatching a
+  hand-built `new Event('submit')`. That synthetic event is untrusted
+  (`isTrusted === false`); Chrome's Payload.js processed it anyway, but
+  Firefox's ignored it, so the card was never tokenized. The submit handler now
+  lets the user's real, trusted submit event continue through to Payload.js
+  instead of stopping it and faking one — Payload prevents the native
+  navigation itself (`preventDefaultOnSubmit: true`). No app changes are
+  required. (The internal `paying` phase, which only existed to pass the
+  re-dispatched event through, is gone; the state machine is now
+  idle → processing → done.)
+
 ## [0.3.0] - 2026-10-11
 
 Breaking release: the default capture mode changed and `manual` capture is
